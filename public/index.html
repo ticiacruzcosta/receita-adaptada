@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Receita Adaptada — Inteligência Culinária & Conversão Exata</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/globals.css" />
+</head>
+<body class="min-h-screen pb-16">
+  <!-- Barra Superior Institucional -->
+  <header class="bg-[#1A2332] text-white border-b border-white/10 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F39200] to-[#C2410C] flex items-center justify-center font-extrabold text-lg shadow-md">
+          RA
+        </div>
+        <div>
+          <span class="font-bold text-lg tracking-tight">Receita Adaptada</span>
+          <span class="hidden sm:inline-block ml-2 text-xs px-2.5 py-0.5 rounded-full bg-white/15 text-orange-200 font-medium">
+            Gemini API + Conversor em Código TS
+          </span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="statusBadge" class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-medium">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Verificando API...</span>
+        </div>
+        <button id="btnAbrirDensidades" type="button" class="btn btn-secundario text-xs px-3.5 py-1.5">
+          Tabela de Densidades (BR)
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6">
+    <!-- Banner de Destaque SAGA -->
+    <section class="banner-saga rounded-3xl p-6 sm:p-8 text-white">
+      <div class="relative z-10 max-w-3xl space-y-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-3 py-1 rounded-full bg-white/15 text-xs font-semibold tracking-wide uppercase">
+            Cozinha Real Brasileira
+          </span>
+          <span class="px-3 py-1 rounded-full bg-white/15 text-xs font-medium">
+            Xícara = 240 ml • Sopa = 15 ml • Chá = 5 ml
+          </span>
+          <span id="versaoPromptPill" class="px-3 py-1 rounded-full bg-white/15 text-xs font-medium">
+            Prompt v1.2.0
+          </span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold leading-tight">
+          Adapte qualquer receita aos ingredientes e utensílios que você tem em casa
+        </h1>
+        <p class="text-sm sm:text-base text-slate-200 leading-relaxed">
+          A IA analisa a proporção química e faz substituições seguras, enquanto nosso módulo determinístico em
+          <strong>TypeScript</strong> calcula as conversões de gramas para xícaras e o ajuste de porções sem erros matemáticos.
+        </p>
+      </div>
+    </section>
+
+    <!-- Alerta de Erro (Oculto por padrão) -->
+    <div id="alertaErro" class="hidden cartao border-l-4 border-l-red-600 p-4 bg-red-50/90 text-red-900">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h3 class="font-bold text-sm uppercase tracking-wider text-red-800">Não foi possível adaptar a receita</h3>
+          <p id="mensagemErro" class="text-sm mt-1"></p>
+        </div>
+        <button id="btnFecharErro" class="text-red-700 hover:text-red-900 font-bold text-sm px-2">✕</button>
+      </div>
+    </div>
+
+    <!-- Formulário de Entrada e Opções -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Coluna da Receita Original (7 colunas) -->
+      <div class="lg:col-span-7 cartao p-6 flex flex-col justify-between space-y-4">
+        <div class="space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-lg font-bold text-[#1A2332]">1. Receita Original (Texto Livre)</h2>
+              <p class="text-xs text-slate-500">Cole os ingredientes e o modo de preparo ou carregue um exemplo abaixo.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="btnExemploCenoura" class="btn btn-escuro text-xs px-3.5 py-2">
+                🥕 Usar receita de exemplo (Bolo de Cenoura)
+              </button>
+              <button type="button" id="btnExemploPaoDeLo" class="btn btn-secundario text-xs px-3 py-2" title="Testar alerta de confiança baixa ao remover ovos do Pão de Ló">
+                ⚠️ Exemplo Crítico (Pão de Ló s/ Ovo)
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            id="campoReceitaOriginal"
+            rows="13"
+            class="campo font-mono text-sm leading-relaxed resize-y"
+            placeholder="Ex: Bolo de Cenoura (8 porções)&#10;- 240g de farinha de trigo&#10;- 180g de açúcar&#10;- 3 ovos&#10;- 100g de manteiga..."
+          ></textarea>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
+          <span id="contadorCaracteres">0 caracteres</span>
+          <button type="button" id="btnLimpar" class="text-slate-500 hover:text-[#C2410C] font-medium">
+            Limpar campos
+          </button>
+        </div>
+      </div>
+
+      <!-- Coluna de Configurações da Adaptação (5 colunas) -->
+      <form id="formAdaptar" class="lg:col-span-5 cartao p-6 space-y-5">
+        <div>
+          <h2 class="text-lg font-bold text-[#1A2332]">2. O que você deseja adaptar?</h2>
+          <p class="text-xs text-slate-500">Combine quantas opções quiser para sua realidade na cozinha.</p>
+        </div>
+
+        <!-- a) Converter medidas -->
+        <div class="space-y-1.5">
+          <label for="selectConversao" class="block text-xs font-bold uppercase tracking-wider text-slate-700">
+            a) Converter Medidas (Cálculo em Código TS)
+          </label>
+          <select id="selectConversao" class="campo text-sm font-medium">
+            <option value="para_caseiras">Converter g / ml ➔ Xícaras e Colheres (sopa/chá)</option>
+            <option value="para_metricas">Converter Xícaras e Colheres ➔ Gramas (g) e ml</option>
+            <option value="nenhuma">Manter unidades originais da receita</option>
+          </select>
+        </div>
+
+        <!-- b) Substituir ingredientes que não tem -->
+        <div class="space-y-1.5">
+          <label for="inputSubstituir" class="block text-xs font-bold uppercase tracking-wider text-slate-700">
+            b) Ingredientes que NÃO tenho em casa
+          </label>
+          <input
+            id="inputSubstituir"
+            type="text"
+            class="campo text-sm"
+            placeholder="Não tenho: manteiga, ovo, leite..."
+          />
+          <div class="flex flex-wrap gap-1.5 pt-1">
+            <span class="text-[11px] text-slate-400">Atalhos rápidos:</span>
+            <button type="button" data-add-ing="manteiga" class="atalho-ing text-[11px] px-2 py-0.5 rounded-full bg-slate-100 hover:bg-orange-100 text-slate-700 transition">+ manteiga</button>
+            <button type="button" data-add-ing="ovo" class="atalho-ing text-[11px] px-2 py-0.5 rounded-full bg-slate-100 hover:bg-orange-100 text-slate-700 transition">+ ovo</button>
+            <button type="button" data-add-ing="leite" class="atalho-ing text-[11px] px-2 py-0.5 rounded-full bg-slate-100 hover:bg-orange-100 text-slate-700 transition">+ leite</button>
+            <button type="button" data-add-ing="fermento" class="atalho-ing text-[11px] px-2 py-0.5 rounded-full bg-slate-100 hover:bg-orange-100 text-slate-700 transition">+ fermento</button>
+          </div>
+        </div>
+
+        <!-- c) Ajustar porções -->
+        <div class="space-y-1.5">
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
+            c) Ajustar Rendimento (Porções / Pessoas)
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <span class="block text-[11px] text-slate-500 mb-1">Porções originais</span>
+              <input id="inputPorcoesOriginais" type="number" min="1" max="200" placeholder="Ex: 4" class="campo text-sm" />
+            </div>
+            <div>
+              <span class="block text-[11px] text-slate-500 mb-1">Porções desejadas</span>
+              <input id="inputPorcoesDesejadas" type="number" min="1" max="200" placeholder="Ex: 6" class="campo text-sm" />
+            </div>
+          </div>
+        </div>
+
+        <!-- d) Restrições alimentares -->
+        <div class="space-y-2">
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">
+            d) Restrições Alimentares
+          </label>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <label class="flex items-center gap-2 p-2.5 rounded-xl bg-[#F1F3F6] hover:bg-orange-50/70 cursor-pointer border border-transparent has-[:checked]:border-[#F39200] has-[:checked]:bg-orange-50/80 transition">
+              <input type="checkbox" name="restricoes" value="sem_lactose" class="accent-[#C2410C] w-4 h-4" />
+              <span class="text-xs font-semibold">Sem Lactose</span>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded-xl bg-[#F1F3F6] hover:bg-orange-50/70 cursor-pointer border border-transparent has-[:checked]:border-[#F39200] has-[:checked]:bg-orange-50/80 transition">
+              <input type="checkbox" name="restricoes" value="sem_gluten" class="accent-[#C2410C] w-4 h-4" />
+              <span class="text-xs font-semibold">Sem Glúten</span>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded-xl bg-[#F1F3F6] hover:bg-orange-50/70 cursor-pointer border border-transparent has-[:checked]:border-[#F39200] has-[:checked]:bg-orange-50/80 transition">
+              <input type="checkbox" name="restricoes" value="vegano" class="accent-[#C2410C] w-4 h-4" />
+              <span class="text-xs font-semibold">Vegano</span>
+            </label>
+          </div>
+        </div>
+
+        <button type="submit" id="btnSubmeter" class="btn btn-principal w-full py-3.5 text-sm shadow-lg">
+          <span id="textoBotaoSubmeter">Adaptar Receita Agora</span>
+        </button>
+      </form>
+    </section>
+
+    <!-- Seção de Resultados (Oculta até a 1ª adaptação) -->
+    <section id="secaoResultado" class="hidden space-y-6">
+      <!-- Barra de Topo do Resultado + Confiabilidade + Alternador de Modo Comparação -->
+      <div class="cartao p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div class="space-y-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <span id="badgeRendimento" class="px-3 py-1 rounded-full bg-[#1A2332] text-white text-xs font-semibold"></span>
+            <span id="badgeCalculoCodigo" class="px-3 py-1 rounded-full bg-orange-100 text-[#B45309] text-xs font-semibold"></span>
+          </div>
+          <h2 id="tituloReceitaAdaptada" class="text-2xl font-extrabold text-[#1A2332] pt-1"></h2>
+        </div>
+
+        <!-- Selo de Confiança da Adaptação -->
+        <div id="cardConfianca" class="p-4 rounded-2xl border flex items-start gap-3 max-w-md">
+          <div id="pontoConfianca" class="w-3 h-3 rounded-full mt-1.5 shrink-0"></div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold uppercase tracking-wider">Confiança da Adaptação:</span>
+              <span id="nivelConfiancaTexto" class="text-xs font-extrabold uppercase px-2.5 py-0.5 rounded-full"></span>
+            </div>
+            <p id="justificativaConfiancaTexto" class="text-xs mt-1 leading-relaxed"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modo Comparação Lado a Lado: Receita Original x Receita Adaptada -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-bold text-[#1A2332]">
+            5. Modo Comparação Lado a Lado (Original × Adaptada)
+          </h3>
+          <span class="text-xs text-slate-500">Compare diretamente as quantidades, substituições e etapas recalculadas</span>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Coluna Esquerda: Receita Original -->
+          <div class="cartao p-6 bg-slate-50/70 flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Receita Original Colada</span>
+                <span id="porcoesOriginaisTag" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700"></span>
+              </div>
+              <pre id="comparacaoTextoOriginal" class="whitespace-pre-wrap font-mono text-xs sm:text-sm text-slate-700 leading-relaxed"></pre>
+            </div>
+          </div>
+
+          <!-- Coluna Direita: Receita Adaptada (Ingredientes + Passo a Passo) -->
+          <div class="cartao p-6 space-y-6 border-2 border-[#F39200]/30">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <span class="text-xs font-bold uppercase tracking-wider text-[#C2410C]">Receita Adaptada & Recalculada</span>
+              <span id="porcoesAdaptadasTag" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-100 text-[#C2410C]"></span>
+            </div>
+
+            <!-- Lista de Ingredientes Adaptada -->
+            <div class="space-y-2.5">
+              <h4 class="text-sm font-bold text-[#1A2332] uppercase tracking-wider">Ingredientes Adaptados</h4>
+              <ul id="listaIngredientesAdaptados" class="space-y-2"></ul>
+            </div>
+
+            <!-- Passo a Passo Recalculado -->
+            <div class="space-y-2.5 pt-2 border-t border-slate-100">
+              <h4 class="text-sm font-bold text-[#1A2332] uppercase tracking-wider">Passo a Passo Recalculado</h4>
+              <ol id="listaPassoAPasso" class="space-y-2.5 text-sm text-slate-700 list-decimal list-inside"></ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Avisos de Impacto e Tabela "O que mudou" -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Avisos de Impacto Químico / Sensorial (5 colunas) -->
+        <div class="lg:col-span-5 cartao p-6 space-y-4">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#F39200]"></span>
+            <h3 class="text-base font-bold text-[#1A2332]">Avisos de Impacto Culinário</h3>
+          </div>
+          <ul id="listaAvisosImpacto" class="space-y-2.5 text-sm text-slate-700"></ul>
+        </div>
+
+        <!-- Tabela "O que mudou" (7 colunas) -->
+        <div class="lg:col-span-7 cartao p-6 space-y-4 overflow-hidden">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-[#1A2332]">Tabela "O que mudou" (Original ➔ Adaptado ➔ Motivo)</h3>
+          </div>
+          <div class="overflow-x-auto rounded-xl border border-slate-200/80">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="tabela-cab border-b border-slate-200">
+                  <th class="py-3 px-4">Original</th>
+                  <th class="py-3 px-4">Adaptado</th>
+                  <th class="py-3 px-4">Motivo Técnico / Cálculo</th>
+                </tr>
+              </thead>
+              <tbody id="tabelaMudancasBody" class="divide-y divide-slate-200/60 text-xs sm:text-sm"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Visualizador do JSON Estruturado (Validado com Zod) -->
+      <details class="cartao p-5">
+        <summary class="cursor-pointer font-bold text-sm text-[#1A2332] flex items-center justify-between">
+          <span>Inspecionar Saída JSON Estruturada (Validada com Zod)</span>
+          <span class="text-xs font-normal text-slate-500">Clique para expandir/recolher</span>
+        </summary>
+        <pre id="jsonBrutoOutput" class="mt-4 p-4 rounded-xl bg-[#1A2332] text-emerald-300 font-mono text-xs overflow-x-auto"></pre>
+      </details>
+    </section>
+  </main>
+
+  <!-- Modal da Tabela de Densidades em Código -->
+  <div id="modalDensidades" class="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+    <div class="cartao max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="p-5 bg-[#1A2332] text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-base">Tabela de Densidades Culinárias (src/conversor.ts)</h3>
+          <p class="text-xs text-slate-300">Usada pelo módulo TypeScript para converter gramas/ml sem depender de cálculo da IA</p>
+        </div>
+        <button id="btnFecharDensidades" class="text-white/80 hover:text-white font-bold px-2">✕</button>
+      </div>
+      <div class="p-5 overflow-y-auto space-y-3 text-sm">
+        <div class="overflow-x-auto rounded-xl border border-slate-200">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="tabela-cab border-b border-slate-200">
+                <th class="py-2.5 px-4">Ingrediente</th>
+                <th class="py-2.5 px-4">1 Xícara (240 ml)</th>
+                <th class="py-2.5 px-4">1 Colher Sopa (15 ml)</th>
+                <th class="py-2.5 px-4">Tipo</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaDensidadesBody" class="divide-y divide-slate-200 text-xs"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
