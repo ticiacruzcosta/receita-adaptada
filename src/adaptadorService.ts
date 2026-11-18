@@ -8,7 +8,10 @@ import {
   IngredienteAdaptado,
   ItemMudanca,
 } from './schemas';
-import { processarMatematicaIngrediente } from './conversor';
+import {
+  processarMatematicaIngrediente,
+  calcularRecomendacaoFormaEForno,
+} from './conversor';
 import {
   SYSTEM_PROMPT_ADAPTADOR,
   GEMINI_RESPONSE_SCHEMA,
@@ -29,7 +32,6 @@ async function obterAnaliseEstruturadaIA(
 
   let ultimoErroValidacao: string | undefined = undefined;
 
-  // Até 2 tentativas: 1ª chamada normal + 1 retry automático caso o JSON seja inválido
   for (let tentativa = 1; tentativa <= 2; tentativa++) {
     const promptUsuario = construirPromptUsuario({
       ...entrada,
@@ -43,7 +45,7 @@ async function obterAnaliseEstruturadaIA(
         systemInstruction: SYSTEM_PROMPT_ADAPTADOR,
         responseMimeType: 'application/json',
         responseSchema: GEMINI_RESPONSE_SCHEMA,
-        temperature: 0.2, // baixa temperatura para fidelidade química e determinismo
+        temperature: 0.2,
       },
     });
 
@@ -72,7 +74,6 @@ async function obterAnaliseEstruturadaIA(
       return validacaoZod.data;
     }
 
-    // Formata os erros do Zod para enviar no retry (tentativa 2)
     ultimoErroValidacao = validacaoZod.error.issues
       .map((i) => `Campo "${i.path.join('.')}": ${i.message}`)
       .join('; ');
@@ -89,8 +90,7 @@ async function obterAnaliseEstruturadaIA(
 
 /**
  * Motor Heurístico Local (Fallback Inteligente determinístico):
- * Usado nos testes automatizados ou caso o usuário esteja avaliando o MVP sem GEMINI_API_KEY configurada
- * (quando permitido pelo modo de execução), aplicando exatamente as mesmas regras químicas do System Prompt.
+ * Aplica as mesmas regras químicas do System Prompt quando sem GEMINI_API_KEY ou durante os testes automatizados.
  */
 export function analisarReceitaComMotorRegrasLocal(entrada: AdaptarEntrada): RespostaIA {
   const texto = entrada.receitaOriginal;
@@ -104,7 +104,6 @@ export function analisarReceitaComMotorRegrasLocal(entrada: AdaptarEntrada): Res
     tituloReceita = linhas[0].replace(/^#+\s*/, '').replace(/:$/, '');
   }
 
-  // Detecta porções no texto (ex: "8 porções", "rende 6 porções", "4 pessoas")
   const matchPorcoes = texto.match(/(\d+)\s*(porç(?:ões|ao|oes)|pessoas|fatias|unidades)/i);
   const porcoesOriginaisIdentificadas =
     entrada.porcoesOriginais || (matchPorcoes ? Number(matchPorcoes[1]) : 4);
@@ -177,7 +176,6 @@ export function analisarReceitaComMotorRegrasLocal(entrada: AdaptarEntrada): Res
       let qtdNumerica = parseQuantidadeTexto(qtdTexto);
       let unidade = unidadeBruta || 'unidades';
 
-      // Caso especial: "3 ovos" onde "ovos" caiu na unidade e o resto no nome ou vice-versa
       if (/^ovos?$/i.test(unidadeBruta) && nomeBruto) {
         nomeBruto = `${unidadeBruta} ${nomeBruto}`;
         unidade = 'unidades';
@@ -192,7 +190,6 @@ export function analisarReceitaComMotorRegrasLocal(entrada: AdaptarEntrada): Res
 
       const nomeLower = nomeBruto.toLowerCase();
 
-      // Verifica substituições químicas
       if (nomeLower.includes('manteiga') && semManteiga) {
         const substituto = querVegano
           ? 'margarina vegetal sem leite (80% lipídios) ou óleo de coco'
@@ -431,16 +428,16 @@ function parseFracao(frac: string): number {
 /**
  * Pipeline completo de Adaptação de Receita:
  * 1. Valida entrada com Zod
- * 2. Obtém análise de ingredientes e substituições (via Gemini Structured Output + retry, ou fallback local se configurado)
- * 3. Executa TODAS as conversões de densidades/unidades e cálculo de porções em CÓDIGO TypeScript (`src/conversor.ts`)
+ * 2. Obtém análise de ingredientes e substituições (via Gemini Structured Output + retry, ou fallback local)
+ * 3. Executa TODAS as conversões de densidades/unidades, cálculo de porções, forma e Airfryer em CÓDIGO TypeScript (`src/conversor.ts`)
  * 4. Valida a saída final com `RespostaAdaptadaSchema` (Zod)
  */
 export async function adaptarReceita(
   entradaBruta: AdaptarEntrada,
-  opcoes?: { permitirFallbackSemChave?: boolean }
+  opcoes?: { permitirFallbackSemChave?: boolean; apiKeyOverride?: string }
 ): Promise<RespostaAdaptada> {
   const entrada = entradaBruta;
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  const apiKey = (opcoes?.apiKeyOverride || process.env.GEMINI_API_KEY || '').trim();
 
   let respostaIA: RespostaIA;
   let usouFallbackLocal = false;
@@ -452,11 +449,10 @@ export async function adaptarReceita(
     usouFallbackLocal = true;
   } else {
     throw new Error(
-      'Chave GEMINI_API_KEY não configurada no ambiente (.env). Configure sua chave da Gemini API para utilizar o adaptador.'
+      'Chave GEMINI_API_KEY não configurada. Clique em "Configurar Gemini API" no topo da página ou defina no arquivo .env.'
     );
   }
 
-  // Determina porções originais e fator de escala exato em código TypeScript
   const porcoesOriginais =
     entrada.porcoesOriginais || respostaIA.porcoesOriginaisIdentificadas || 4;
   const porcoesFinais = entrada.porcoesDesejadas || porcoesOriginais;
@@ -482,6 +478,23 @@ export async function adaptarReceita(
         'Porções reduzidas assam mais rápido: verifique o ponto do forno cerca de 8 a 10 minutos antes do tempo original.'
       );
     }
+  }
+
+  // Calcula recomendação técnica de forma/assadeira e conversão para Airfryer em código TypeScript
+  const recomendacaoTecnica = calcularRecomendacaoFormaEForno({
+    textoOriginal: entrada.receitaOriginal,
+    porcoesFinais,
+    fatorEscala,
+    adaptarParaAirfryer: Boolean(entrada.adaptarParaAirfryer),
+  });
+
+  if (entrada.adaptarParaAirfryer && recomendacaoTecnica.modoAirfryer) {
+    mudancasFinais.push({
+      original: 'Forno convencional (padrão da receita)',
+      adaptado: `Airfryer a ${recomendacaoTecnica.modoAirfryer.temperaturaAirfryerC}°C por ~${recomendacaoTecnica.modoAirfryer.tempoAirfryerMin} min`,
+      motivo: 'Conversão térmica em código TypeScript (−20°C na temperatura e −22% no tempo para convecção acelerada da Airfryer).',
+    });
+    avisosFinais.push(recomendacaoTecnica.modoAirfryer.resumo);
   }
 
   // Processa cada ingrediente no módulo de conversão determinística em TypeScript
@@ -529,13 +542,14 @@ export async function adaptarReceita(
     oQueMudou: mudancasFinais,
     avisosImpacto: avisosFinais,
     confianca: respostaIA.confianca,
+    recomendacaoTecnica,
     metadadosConversao: {
       conversaoAplicada: entrada.converterMedidas,
       itensCalculadosEmCodigo,
       usouFallbackLocal,
+      motorUtilizado: usouFallbackLocal ? 'regras_local' : 'gemini_api',
     },
   };
 
-  // Validação rigorosa de saída com Zod antes de retornar
   return RespostaAdaptadaSchema.parse(respostaFinal);
 }

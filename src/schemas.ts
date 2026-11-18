@@ -7,7 +7,8 @@ export const AdaptarEntradaSchema = z.object({
   receitaOriginal: z
     .string()
     .trim()
-    .min(10, 'A receita original não pode estar vazia. Digite ao menos os ingredientes e o preparo.'),
+    .min(10, 'A receita original não pode estar vazia. Digite ao menos os ingredientes e o preparo.')
+    .max(10000, 'A receita não pode ultrapassar 10.000 caracteres.'),
   converterMedidas: z.enum([
     'nenhuma',
     'para_caseiras', // g/ml -> xícaras, colheres de sopa/chá
@@ -16,6 +17,7 @@ export const AdaptarEntradaSchema = z.object({
   substituirIngredientes: z
     .string()
     .trim()
+    .max(500, 'A lista de ingredientes para substituir é muito longa.')
     .optional()
     .default(''), // ex: "manteiga, ovo"
   porcoesOriginais: z
@@ -33,6 +35,10 @@ export const AdaptarEntradaSchema = z.object({
   restricoes: z
     .array(z.enum(['sem_lactose', 'sem_gluten', 'vegano']))
     .default([]),
+  adaptarParaAirfryer: z
+    .boolean()
+    .optional()
+    .default(false),
 });
 
 export type AdaptarEntrada = z.infer<typeof AdaptarEntradaSchema>;
@@ -74,7 +80,27 @@ export const NivelConfiancaSchema = z.object({
 export type NivelConfianca = z.infer<typeof NivelConfiancaSchema>;
 
 /**
- * Schema que a IA deve retornar antes (ou junto) do pós-processamento matemático
+ * Schema de recomendação determinística de forma e forno (calculado em código TypeScript)
+ */
+export const RecomendacaoFormaFornoSchema = z.object({
+  formaRecomendada: z.string().min(1),
+  ajusteForno: z.string().min(1),
+  modoAirfryer: z
+    .object({
+      ativo: z.boolean(),
+      temperaturaOriginalC: z.number().nullable(),
+      temperaturaAirfryerC: z.number(),
+      tempoOriginalMin: z.number().nullable(),
+      tempoAirfryerMin: z.number(),
+      resumo: z.string(),
+    })
+    .optional(),
+});
+
+export type RecomendacaoFormaForno = z.infer<typeof RecomendacaoFormaFornoSchema>;
+
+/**
+ * Schema que a IA deve retornar antes do pós-processamento matemático
  */
 export const RespostaIASchema = z.object({
   tituloReceita: z.string().min(1),
@@ -110,10 +136,12 @@ export const RespostaAdaptadaSchema = z.object({
   oQueMudou: z.array(ItemMudancaSchema),
   avisosImpacto: z.array(z.string()),
   confianca: NivelConfiancaSchema,
+  recomendacaoTecnica: RecomendacaoFormaFornoSchema,
   metadadosConversao: z.object({
     conversaoAplicada: z.enum(['nenhuma', 'para_caseiras', 'para_metricas']),
     itensCalculadosEmCodigo: z.number().int().nonnegative(),
     usouFallbackLocal: z.boolean().default(false),
+    motorUtilizado: z.enum(['gemini_api', 'regras_local']).default('regras_local'),
   }),
 });
 

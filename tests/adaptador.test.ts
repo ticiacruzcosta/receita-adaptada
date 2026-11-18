@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { processarMatematicaIngrediente } from '../src/conversor';
+import {
+  processarMatematicaIngrediente,
+  calcularRecomendacaoFormaEForno,
+  TABELA_DENSIDADES,
+} from '../src/conversor';
 import { AdaptarEntradaSchema, RespostaAdaptadaSchema } from '../src/schemas';
 import { adaptarReceita } from '../src/adaptadorService';
 
@@ -14,7 +18,6 @@ const casosDeTeste: CasoDeTeste[] = [
     id: 1,
     nome: '200g de farinha de trigo -> xícaras (Cálculo em Código TypeScript: 1 e 2/3 xícara)',
     executar: async () => {
-      // 1 xícara de farinha = 120g -> 200g = 1.6667 xícaras (1 e 2/3 xícaras)
       const res = processarMatematicaIngrediente({
         nome: 'farinha de trigo',
         quantidade: 200,
@@ -62,7 +65,6 @@ const casosDeTeste: CasoDeTeste[] = [
         fatorEscala: 1,
         modoConversao: 'para_metricas',
       });
-      // 1 xícara (16 cs) = 200g -> 1 cs = 12.5g -> 2 cs = 25g
       assert.equal(resManteiga.quantidade, 25);
       assert.equal(resManteiga.unidade, 'g');
     },
@@ -188,7 +190,6 @@ const casosDeTeste: CasoDeTeste[] = [
         i.nome.toLowerCase().includes('sem glúten')
       );
       assert.ok(mixSemGluten, 'Farinha de trigo deve ser substituída por mix sem glúten');
-      // 240g de farinha / 120g por xícara = 2 xícaras (chá)
       assert.equal(mixSemGluten.quantidadeFormatada, '2 xícaras (chá)');
     },
   },
@@ -203,11 +204,110 @@ const casosDeTeste: CasoDeTeste[] = [
       assert.equal(resultadoParse.success, false, 'Receita vazia deve ser rejeitada pelo Zod');
     },
   },
+  {
+    id: 11,
+    nome: 'Novas densidades brasileiras: Fubá mimoso (260g -> 2 xícaras) e Leite em pó (50g -> 1/2 xícara)',
+    executar: async () => {
+      assert.ok(TABELA_DENSIDADES.length >= 27, 'Tabela deve ter ao menos 27 grupos de ingredientes');
+      const fuba = processarMatematicaIngrediente({
+        nome: 'fubá mimoso',
+        quantidade: 260,
+        unidade: 'g',
+        fatorEscala: 1,
+        modoConversao: 'para_caseiras',
+      });
+      assert.equal(fuba.quantidadeFormatada, '2 xícaras (chá)');
+
+      const leiteEmPo = processarMatematicaIngrediente({
+        nome: 'leite em pó',
+        quantidade: 50,
+        unidade: 'g',
+        fatorEscala: 1,
+        modoConversao: 'para_caseiras',
+      });
+      assert.equal(leiteEmPo.quantidadeFormatada, '1/2 xícara (chá)');
+    },
+  },
+  {
+    id: 12,
+    nome: 'Conversão térmica para Airfryer em código: 180°C por 40 min -> 160°C por 31 min',
+    executar: async () => {
+      const rec = calcularRecomendacaoFormaEForno({
+        textoOriginal: 'Asse em forno preaquecido a 180°C por 40 minutos.',
+        porcoesFinais: 8,
+        fatorEscala: 1,
+        adaptarParaAirfryer: true,
+      });
+      assert.ok(rec.modoAirfryer?.ativo);
+      assert.equal(rec.modoAirfryer?.temperaturaAirfryerC, 160);
+      assert.equal(rec.modoAirfryer?.tempoAirfryerMin, 31);
+    },
+  },
+  {
+    id: 13,
+    nome: 'Dimensionamento automático de forma em código ao dobrar porções (8 -> 16 porções)',
+    executar: async () => {
+      const rec8 = calcularRecomendacaoFormaEForno({
+        textoOriginal: 'Asse a 180°C por 35 minutos.',
+        porcoesFinais: 8,
+        fatorEscala: 1,
+        adaptarParaAirfryer: false,
+      });
+      const rec16 = calcularRecomendacaoFormaEForno({
+        textoOriginal: 'Asse a 180°C por 35 minutos.',
+        porcoesFinais: 16,
+        fatorEscala: 2,
+        adaptarParaAirfryer: false,
+      });
+      assert.notEqual(rec8.formaRecomendada, rec16.formaRecomendada);
+      assert.ok(rec16.formaRecomendada.includes('25×35 cm'));
+    },
+  },
+  {
+    id: 14,
+    nome: 'Adaptação combinada completa: Fração mista (1 e 1/2 xícara) + Sem Glúten + Vegano + Airfryer + Métricas',
+    executar: async () => {
+      const entrada = AdaptarEntradaSchema.parse({
+        receitaOriginal: `Cookies Caseiros (6 porções)\n- 1 e 1/2 xícara (chá) de farinha de trigo\n- 1/2 xícara (chá) de manteiga\n- 1 ovo\nModo de preparo:\n1. Asse a 180°C por 15 minutos.`,
+        converterMedidas: 'para_metricas',
+        restricoes: ['sem_gluten', 'vegano'],
+        adaptarParaAirfryer: true,
+      });
+
+      const saida = await adaptarReceita(entrada, { permitirFallbackSemChave: true });
+      const mixFarinha = saida.ingredientesAdaptados.find((i) =>
+        i.nome.toLowerCase().includes('sem glúten')
+      );
+      // 1.5 xícara de farinha * 120g = 180g
+      assert.equal(mixFarinha?.quantidade, 180);
+      assert.equal(mixFarinha?.unidade, 'g');
+      assert.equal(saida.recomendacaoTecnica.modoAirfryer?.temperaturaAirfryerC, 160);
+      assert.equal(saida.confianca.nivel, 'média');
+    },
+  },
+  {
+    id: 15,
+    nome: 'Substituição de fermento em pó ("não tenho: fermento") por bicarbonato de sódio + ácido',
+    executar: async () => {
+      const entrada = AdaptarEntradaSchema.parse({
+        receitaOriginal: `Bolo Rápido (6 porções)\n- 240 g de farinha de trigo\n- 1 colher (sopa) de fermento em pó\nModo de preparo:\n1. Misture e asse.`,
+        converterMedidas: 'nenhuma',
+        substituirIngredientes: 'fermento',
+        restricoes: [],
+      });
+
+      const saida = await adaptarReceita(entrada, { permitirFallbackSemChave: true });
+      const temBicarbonato = saida.ingredientesAdaptados.some((i) =>
+        i.nome.toLowerCase().includes('bicarbonato')
+      );
+      assert.equal(temBicarbonato, true, 'Deve substituir fermento por bicarbonato + ácido');
+    },
+  },
 ];
 
 async function rodarSuiteDeTestes() {
   console.log('================================================================');
-  console.log('🧪 EXECUTANDO SUÍTE DE TESTES - RECEITA ADAPTADA (10 CASOS)');
+  console.log('🧪 EXECUTANDO SUÍTE DE TESTES - RECEITA ADAPTADA (15 CASOS)');
   console.log('================================================================\n');
 
   let passaram = 0;

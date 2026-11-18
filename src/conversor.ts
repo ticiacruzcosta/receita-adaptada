@@ -1,15 +1,18 @@
 /**
- * Módulo de Conversão Culinária Determinística (Medidas Brasileiras)
+ * Módulo de Conversão Culinária Determinística (Medidas Brasileiras + Forma & Forno)
  *
  * Referências Oficiais Brasileiras:
  * - 1 xícara de chá padrão = 240 ml
  * - 1 colher de sopa (cs) = 15 ml
  * - 1 colher de chá (cc) = 5 ml
  *
- * A IA identifica os ingredientes e unidades, mas TODA a matemática de escala de porções
- * e conversão entre massa (g/kg), volume métrico (ml/l) e medidas caseiras (xícaras/colheres)
+ * A IA identifica os ingredientes e unidades, mas TODA a matemática de escala de porções,
+ * conversão entre massa (g/kg), volume métrico (ml/l), medidas caseiras (xícaras/colheres),
+ * dimensionamento de assadeira e conversão de temperatura/tempo para Airfryer
  * é executada neste módulo em TypeScript puro para evitar erros de cálculo do modelo.
  */
+
+import { RecomendacaoFormaForno } from './schemas';
 
 export interface DadosDensidade {
   nomeCanonica: string;
@@ -19,13 +22,13 @@ export interface DadosDensidade {
 }
 
 /**
- * Tabela de densidades culinárias brasileiras (gramas por xícara de 240 ml)
+ * Tabela expandida de densidades culinárias brasileiras (gramas por xícara de 240 ml)
  */
 export const TABELA_DENSIDADES: DadosDensidade[] = [
   {
     nomeCanonica: 'farinha de trigo',
     termos: ['farinha de trigo', 'farinha', 'trigo', 'farinha sem gluten', 'farinha sem glúten', 'mix de farinha'],
-    gramasPorXicara: 120, // 1 xícara = 120g | 1 cs = 7.5g
+    gramasPorXicara: 120,
     ehLiquido: false,
   },
   {
@@ -35,21 +38,45 @@ export const TABELA_DENSIDADES: DadosDensidade[] = [
     ehLiquido: false,
   },
   {
-    nomeCanonica: 'farinha de aveia',
+    nomeCanonica: 'farinha de aveia / aveia',
     termos: ['farinha de aveia', 'aveia em flocos', 'aveia'],
     gramasPorXicara: 90,
     ehLiquido: false,
   },
   {
-    nomeCanonica: 'amido de milho',
-    termos: ['amido de milho', 'maizena', 'maisena', 'polvilho doce', 'polvilho azedo', 'fécula de batata'],
+    nomeCanonica: 'fubá mimoso / farinha de milho',
+    termos: ['fubá', 'fuba', 'fubá mimoso', 'farinha de milho', 'flocão de milho'],
+    gramasPorXicara: 130,
+    ehLiquido: false,
+  },
+  {
+    nomeCanonica: 'amido de milho / fécula',
+    termos: ['amido de milho', 'maizena', 'maisena', 'fécula de batata', 'fecula de batata', 'fécula de mandioca'],
     gramasPorXicara: 150,
     ehLiquido: false,
   },
   {
-    nomeCanonica: 'açúcar refinado',
-    termos: ['açúcar refinado', 'acucar refinado', 'açúcar', 'acucar', 'açúcar cristal', 'açúcar demerara'],
-    gramasPorXicara: 180, // 1 xícara = 180g | 1 cs = 11.25g
+    nomeCanonica: 'polvilho doce',
+    termos: ['polvilho doce'],
+    gramasPorXicara: 130,
+    ehLiquido: false,
+  },
+  {
+    nomeCanonica: 'polvilho azedo',
+    termos: ['polvilho azedo'],
+    gramasPorXicara: 150,
+    ehLiquido: false,
+  },
+  {
+    nomeCanonica: 'tapioca granulada / goma de tapioca',
+    termos: ['tapioca', 'goma de tapioca', 'tapioca granulada'],
+    gramasPorXicara: 150,
+    ehLiquido: false,
+  },
+  {
+    nomeCanonica: 'açúcar refinado / cristal',
+    termos: ['açúcar refinado', 'acucar refinado', 'açúcar', 'acucar', 'açúcar cristal', 'açúcar demerara', 'xilitol', 'eritritol'],
+    gramasPorXicara: 180,
     ehLiquido: false,
   },
   {
@@ -67,7 +94,7 @@ export const TABELA_DENSIDADES: DadosDensidade[] = [
   {
     nomeCanonica: 'manteiga ou margarina',
     termos: ['manteiga', 'margarina', 'manteiga vegana', 'manteiga sem sal', 'manteiga com sal', 'ghee', 'gordura vegetal'],
-    gramasPorXicara: 200, // 1 xícara = 200g | 1 cs = 12.5g (~12-13g)
+    gramasPorXicara: 200,
     ehLiquido: false,
   },
   {
@@ -77,9 +104,21 @@ export const TABELA_DENSIDADES: DadosDensidade[] = [
     ehLiquido: false,
   },
   {
+    nomeCanonica: 'chocolate picado / gotas de chocolate',
+    termos: ['gotas de chocolate', 'chocolate picado', 'chocolate meio amargo', 'chocolate ao leite'],
+    gramasPorXicara: 170,
+    ehLiquido: false,
+  },
+  {
+    nomeCanonica: 'leite em pó',
+    termos: ['leite em pó', 'leite em po', 'leite ninho'],
+    gramasPorXicara: 100,
+    ehLiquido: false,
+  },
+  {
     nomeCanonica: 'fermento químico em pó',
     termos: ['fermento em pó', 'fermento químico', 'fermento quimico', 'fermento para bolo', 'bicarbonato de sódio', 'bicarbonato'],
-    gramasPorXicara: 192, // 1 colher de sopa (15ml) = ~12g; 1 colher de chá (5ml) = ~4g
+    gramasPorXicara: 192, // 1 colher de sopa (15ml) = 12g; 1 colher de chá (5ml) = 4g
     ehLiquido: false,
   },
   {
@@ -95,14 +134,20 @@ export const TABELA_DENSIDADES: DadosDensidade[] = [
     ehLiquido: false,
   },
   {
-    nomeCanonica: 'queijo ralado',
-    termos: ['queijo ralado', 'parmesão ralado'],
+    nomeCanonica: 'queijo parmesão / meia cura ralado',
+    termos: ['queijo ralado', 'parmesão ralado', 'queijo meia cura', 'queijo minas'],
     gramasPorXicara: 100,
     ehLiquido: false,
   },
   {
+    nomeCanonica: 'castanhas / nozes / amendoim picado',
+    termos: ['castanha', 'nozes', 'amendoim', 'amêndoas laminadas', 'avelã'],
+    gramasPorXicara: 120,
+    ehLiquido: false,
+  },
+  {
     nomeCanonica: 'cenoura picada/ralada',
-    termos: ['cenoura ralada', 'cenoura picada', 'cenoura em rodelas'],
+    termos: ['cenoura ralada', 'cenoura picada', 'cenoura em rodelas', 'cenoura'],
     gramasPorXicara: 130,
     ehLiquido: false,
   },
@@ -125,13 +170,13 @@ export const TABELA_DENSIDADES: DadosDensidade[] = [
       'essência de baunilha',
       'extrato de baunilha',
     ],
-    gramasPorXicara: 240, // 240 ml = 240 g
+    gramasPorXicara: 240,
     ehLiquido: true,
   },
   {
     nomeCanonica: 'óleo ou azeite',
-    termos: ['óleo', 'oleo', 'óleo vegetal', 'óleo de milho', 'óleo de girassol', 'óleo de coco', 'azeite'],
-    gramasPorXicara: 216, // densidade ~0.9 g/ml -> 240 ml = 216g (mas em métrica líquida, 1 xícara = 240 ml)
+    termos: ['óleo', 'oleo', 'óleo vegetal', 'óleo de milho', 'óleo de girassol', 'óleo de coco', 'azeite', 'azeite de dendê'],
+    gramasPorXicara: 216,
     ehLiquido: true,
   },
   {
@@ -147,15 +192,15 @@ export const TABELA_DENSIDADES: DadosDensidade[] = [
     ehLiquido: false,
   },
   {
-    nomeCanonica: 'mel / melado',
-    termos: ['mel', 'melado', 'glucose', 'xarope'],
+    nomeCanonica: 'mel / melado de cana',
+    termos: ['mel', 'melado', 'melado de cana', 'glucose', 'xarope'],
     gramasPorXicara: 320,
     ehLiquido: false,
   },
   {
     nomeCanonica: 'linhaça / chia',
     termos: ['linhaça', 'farinha de linhaça', 'semente de linhaça', 'chia', 'gel de linhaça'],
-    gramasPorXicara: 144, // 1 colher de sopa (15ml) = ~9g
+    gramasPorXicara: 144, // 1 colher de sopa (15ml) = 9g
     ehLiquido: false,
   },
 ];
@@ -168,7 +213,6 @@ export const MEDIDAS_BR = {
 
 /**
  * Busca a densidade de um ingrediente pelo nome.
- * Caso não encontre na tabela, retorna um fallback padrão (ex: 240g/xícara se parecer líquido, ou 150g/xícara para sólido).
  */
 export function buscarDensidade(nomeIngrediente: string): DadosDensidade {
   const normalizado = nomeIngrediente.toLowerCase().trim();
@@ -203,7 +247,7 @@ export type TipoUnidade =
   | 'xicara'
   | 'colher_sopa'
   | 'colher_cha'
-  | 'unidade_discreta'; // ex: unidade, ovo, lata, pitada
+  | 'unidade_discreta';
 
 /**
  * Identifica o tipo canônico da unidade informada
@@ -244,12 +288,10 @@ export function classificarUnidade(unidade: string): TipoUnidade {
 
 /**
  * Formata um número decimal de xícaras/colheres em frações culinárias brasileiras amigáveis
- * Ex: 1.5 -> "1 e 1/2", 0.25 -> "1/4", 0.33 -> "1/3", 2 -> "2"
  */
 export function formatarFracaoCulinaria(valor: number): string {
   if (valor <= 0) return '0';
 
-  const inteiro = Math.floor(valor + 0.04); // tolerância para arredondamento próximo de inteiro
   const resto = valor - Math.floor(valor);
 
   if (Math.abs(valor - Math.round(valor)) < 0.08) {
@@ -281,15 +323,11 @@ export function formatarFracaoCulinaria(valor: number): string {
     return `${baseInteira} e ${melhorFracao}`;
   }
 
-  // Caso não encaixe bem em fração comum, arredonda para 1 casa decimal com vírgula
   return valor.toFixed(1).replace('.', ',').replace(',0', '');
 }
 
 /**
- * Converte um volume equivalente em mililitros (base xícara 240 ml) para a medida caseira mais adequada:
- * - Volumes >= 60 ml (1/4 de xícara): expressos em xícaras (ou xícara + colher de sopa se necessário)
- * - Volumes entre 10 ml e 59 ml: expressos em colheres de sopa (15 ml)
- * - Volumes < 10 ml: expressos em colheres de chá (5 ml)
+ * Converte um volume equivalente em mililitros (base xícara 240 ml) para a medida caseira mais adequada
  */
 export function volumeMlParaMedidaCaseira(mlEquivalente: number): {
   quantidade: number;
@@ -298,7 +336,7 @@ export function volumeMlParaMedidaCaseira(mlEquivalente: number): {
 } {
   if (mlEquivalente >= 60) {
     const xicaras = mlEquivalente / MEDIDAS_BR.XICARA_ML;
-    const xicarasArredondadas = Math.round(xicaras * 12) / 12; // múltiplos de 1/4 ou 1/3
+    const xicarasArredondadas = Math.round(xicaras * 12) / 12;
     const textoQtd = formatarFracaoCulinaria(xicarasArredondadas);
     const plural = xicarasArredondadas > 1.05;
     const un = plural ? 'xícaras (chá)' : 'xícara (chá)';
@@ -311,7 +349,7 @@ export function volumeMlParaMedidaCaseira(mlEquivalente: number): {
 
   if (mlEquivalente >= 10) {
     const colheresSopa = mlEquivalente / MEDIDAS_BR.COLHER_SOPA_ML;
-    const csArredondada = Math.round(colheresSopa * 2) / 2; // meia colher de precisão
+    const csArredondada = Math.round(colheresSopa * 2) / 2;
     const textoQtd = formatarFracaoCulinaria(csArredondada);
     const plural = csArredondada > 1.05;
     const un = plural ? 'colheres (sopa)' : 'colher (sopa)';
@@ -387,7 +425,6 @@ export function processarMatematicaIngrediente(params: {
 
     if (tipoUnidade === 'grama' || tipoUnidade === 'quilograma') {
       const gramas = tipoUnidade === 'quilograma' ? qtdEscalada * 1000 : qtdEscalada;
-      // 1 xícara (240 ml) pesa `densidade.gramasPorXicara` gramas
       mlEquivalente = (gramas / densidade.gramasPorXicara) * MEDIDAS_BR.XICARA_ML;
     } else {
       mlEquivalente = tipoUnidade === 'litro' ? qtdEscalada * 1000 : qtdEscalada;
@@ -479,6 +516,82 @@ export function processarMatematicaIngrediente(params: {
     unidade,
     quantidadeFormatada: unidade ? `${qtdFormatada} ${unidade}` : qtdFormatada,
     calculadoEmCodigo: calculouEscala,
+  };
+}
+
+/**
+ * Calcula em CÓDIGO TypeScript:
+ * 1) A dimensão ideal de forma/assadeira baseada no rendimento final (porções)
+ * 2) Ajuste proporcional de tempo de forno conforme fatorEscala
+ * 3) Conversão técnica para Airfryer (redução de 20°C na temperatura e 22% no tempo)
+ */
+export function calcularRecomendacaoFormaEForno(params: {
+  textoOriginal: string;
+  porcoesFinais: number;
+  fatorEscala: number;
+  adaptarParaAirfryer: boolean;
+}): RecomendacaoFormaForno {
+  const { textoOriginal, porcoesFinais, fatorEscala, adaptarParaAirfryer } = params;
+
+  // 1. Dimensionamento determinístico de forma por faixa de porções
+  let formaRecomendada = '';
+  if (porcoesFinais <= 4) {
+    formaRecomendada = 'Forma pequena redonda de 15 cm (ou forma de bolo inglês 20×10 cm)';
+  } else if (porcoesFinais <= 8) {
+    formaRecomendada = 'Forma redonda média de 20 cm (ou com furo central de 22 cm / retangular 20×25 cm)';
+  } else if (porcoesFinais <= 12) {
+    formaRecomendada = 'Forma retangular média de 22×30 cm (ou redonda de 24 cm com furo central)';
+  } else if (porcoesFinais <= 18) {
+    formaRecomendada = 'Forma retangular grande de 25×35 cm (ou 2 formas redondas de 20 cm)';
+  } else {
+    formaRecomendada = `Assadeira grande de confeitaria 30×40 cm (ou dividir em ${Math.ceil(
+      porcoesFinais / 10
+    )} formas médias de 22 cm)`;
+  }
+
+  // Extrai temperatura (°C) e tempo (min) da receita original, se houver
+  const matchTemp = textoOriginal.match(/(\d{3})\s*°?\s*c\b/i);
+  const tempOriginal = matchTemp ? Number(matchTemp[1]) : 180;
+
+  const matchTempo = textoOriginal.match(/(\d{1,3})\s*(?:min(?:utos)?)\b/i);
+  const tempoOriginal = matchTempo ? Number(matchTempo[1]) : 35;
+
+  // 2. Ajuste de tempo por escala de volume (lei de transferência térmica aproximada: fator^0.25)
+  const fatorTempoEscala = Math.pow(fatorEscala, 0.22);
+  const tempoFornoRecalculado = Math.max(10, Math.round(tempoOriginal * fatorTempoEscala));
+
+  let ajusteForno = `Forno convencional a ${tempOriginal}°C por cerca de ${tempoFornoRecalculado} minutos`;
+  if (Math.abs(fatorEscala - 1) > 0.15) {
+    ajusteForno += ` (ajustado em código a partir dos ${tempoOriginal} min originais devido ao fator ${Number(
+      fatorEscala.toFixed(2)
+    )}x).`;
+  } else {
+    ajusteForno += ' (faça o teste do palito nos minutos finais).';
+  }
+
+  if (!adaptarParaAirfryer) {
+    return {
+      formaRecomendada,
+      ajusteForno,
+    };
+  }
+
+  // 3. Conversão determinística para Airfryer (-20°C na temperatura e -22% no tempo)
+  const tempAirfryer = Math.max(140, tempOriginal - 20);
+  const tempoAirfryer = Math.max(8, Math.round(tempoFornoRecalculado * 0.78));
+  const resumoAirfryer = `Airfryer preaquecida a ${tempAirfryer}°C (−20°C) por aproximadamente ${tempoAirfryer} minutos (−22% do tempo). Cubra com papel-alumínio nos primeiros 15 min se dourar rápido demais.`;
+
+  return {
+    formaRecomendada: `${formaRecomendada} — Para Airfryer, confirme se a forma cabe no cesto (geralmente até 18–20 cm de diâmetro) ou asse em 2 fornadas.`,
+    ajusteForno: `${ajusteForno} | Na Airfryer: ${tempAirfryer}°C por ~${tempoAirfryer} min.`,
+    modoAirfryer: {
+      ativo: true,
+      temperaturaOriginalC: matchTemp ? tempOriginal : null,
+      temperaturaAirfryerC: tempAirfryer,
+      tempoOriginalMin: matchTempo ? tempoOriginal : null,
+      tempoAirfryerMin: tempoAirfryer,
+      resumo: resumoAirfryer,
+    },
   };
 }
 

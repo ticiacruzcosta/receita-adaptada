@@ -117,3 +117,35 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* Checklist interativo na cozinha */
+.item-check-concluido {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+/* Estilos para Impressão / Ficha Técnica em PDF */
+@media print {
+  body {
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
+    padding: 0 !important;
+  }
+  header,
+  .banner-saga,
+  #secaoFormularioEntrada,
+  #secaoHistorico,
+  #barraAcoesExportacao,
+  details {
+    display: none !important;
+  }
+  #secaoResultado {
+    display: block !important;
+    margin-top: 0 !important;
+  }
+  .cartao {
+    box-shadow: none !important;
+    border: 1px solid #CBD5E1 !important;
+    break-inside: avoid;
+  }
+}
